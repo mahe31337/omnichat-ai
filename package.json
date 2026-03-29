@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently --names \"RAG,UI\" --prefix-colors \"magenta,cyan\" \"npm run rag\" \"vite\"",
+    "dev": "concurrently --names \"RAG,MCP,UI\" --prefix-colors \"magenta,yellow,cyan\" \"npm run rag\" \"npm run mcp\" \"vite\"",
     "rag": "node rag-server/server.js",
+    "mcp": "node mcp-server/server.js",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
