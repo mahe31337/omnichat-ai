@@ -1,6 +1,6 @@
 # OmniChat AI
 
-A powerful, modern, and fully self-hosted AI chat UI with **multi-provider LLM support**, **local RAG memory**, **intelligent web search with multiple engines**, **clean content extraction**, and **domain-specific expert filters** — all running from your own machine with no mandatory cloud dependency.
+A powerful, modern, and fully self-hosted AI chat UI with **multi-provider LLM support**, **local RAG memory**, **intelligent web search**, **Model Context Protocol (MCP) tool integration**, and **domain-specific expert filters** — all running from your own machine with no mandatory cloud dependency.
 
 ---
 
@@ -29,6 +29,17 @@ A local **Retrieval-Augmented Generation** server runs on your machine and makes
 - The AI becomes **more personalized and accurate over time**
 - Uses `Xenova/all-MiniLM-L6-v2` — a ~22MB model that runs **100% locally** (downloads once, no API key needed ever)
 - Toggle **Memory ON/OFF** anytime from the header
+
+---
+
+### 🔌 Model Context Protocol (MCP) Plugins
+OmniChat natively supports the standard **Model Context Protocol (MCP)**, allowing your AI agents to seamlessly interact with external world tools like GitHub, GitLab, local file systems, and more.
+
+- **Dynamic Tool Execution:** Connect to official MCP servers via the "🔌 Manage Plugins (MCP)" sidebar button.
+- **Agentic Loop:** The AI acts autonomously. It determines when to call a tool, waits for the result, reads the live output, and writes a final response based on the execution.
+- **Live Tool Streaming:** Watch the literal raw JSON outputs from backend tools stream into the chat UI in real-time within collapsible `<details>` blocks.
+- **Safety Toggle:** Use the **Plugins ON/OFF** button in the header to easily detach all tools during casual chatting to prevent hallucination (especially useful for smaller local models).
+- **Supports OpenAI & Ollama:** Tool calling schemas are automatically translated for both massive cloud models (GPT-4o) and local models (Qwen2.5, Llama3). Note: for 20+ tools, local models require 8B+ parameters for reliable tool calling.
 
 ---
 
@@ -187,14 +198,14 @@ npm install
 
 ### 4. Running the App
 
-You only need **one terminal**. Both the RAG backend and the React frontend start together:
+You only need **one terminal**. The RAG backend, MCP Manager backend, and the React frontend all start together concurrently:
 
 ```bash
 cd /data/bedrock-ui
 npm run dev
 ```
 
-You'll see color-coded logs (Magenta for the RAG server, Cyan for Vite UI). Open `http://localhost:5173` in your browser.
+You'll see color-coded logs for all three processes. Open `http://localhost:5173` in your browser.
 
 > **Note:** The app works without the RAG server too. If it fails to start, the Memory and Web Search toggles show as "Offline" and gracefully disable themselves.
 
@@ -248,11 +259,16 @@ ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
 bedrock-ui/
 ├── public/
-│   └── prompts/              ← Domain expert instruction files (edit freely!)
-│       ├── terraform.md
-│       ├── kubernetes.md
-│       ├── ansible.md
-│       └── docker.md
+│    └── prompts/              ← Domain expert instruction files (edit freely!)
+        ├── terraform.md
+        ├── kubernetes.md
+        ├── ansible.md
+        └── docker.md
+
+├── mcp-server/               ← Local Model Context Protocol plugin manager (port 3002)
+│   ├── server.js             ← Express server routing tool calls
+│   ├── mcp-manager.js        ← Lifecycle manager for npx @modelcontextprotocol SDK sub-processes
+│   └── package.json
 │
 ├── rag-server/               ← Local RAG + Web Search backend (port 3001)
 │   ├── server.js             ← Express server: RAG store + multi-engine web search
@@ -336,6 +352,45 @@ curl -X DELETE http://localhost:3001/rag/clear
 | [marked](https://marked.js.org/) + [DOMPurify](https://github.com/cure53/DOMPurify) | Safe markdown rendering |
 | [Tavily API](https://tavily.com) | AI-optimised web search (optional, free tier) |
 | [Jina Reader](https://jina.ai/reader/) | Clean article text extraction (free, no key) |
+
+---
+
+---
+
+## 🛠️ Monitoring & Debugging
+
+You can manually inspect and test the backend systems using standard terminal commands:
+
+### **1. Check MCP Plugin Status (Port 3002)**
+Verify which plugins are connected and list all available tools the AI can see:
+```bash
+# See active servers (e.g., github)
+curl http://localhost:3002/mcp/status
+
+# List every available tool and its JSON schema
+curl http://localhost:3002/mcp/tools
+```
+
+### **2. Manually Test a Plugin Tool**
+Bypass the AI and test a specific tool function manually:
+```bash
+curl -X POST http://localhost:3002/mcp/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolName": "github__search_repositories",
+    "args": { "query": "user:YOUR_GITHUB_USERNAME" }
+  }'
+```
+
+### **3. Monitor Local LLM Output (Ollama)**
+See which models are loaded in memory and watch streaming logs:
+```bash
+# Check loaded models
+ollama ps
+
+# Watch raw Ollama server logs
+journalctl -u ollama --no-pager -f
+```
 
 ---
 

@@ -1,11 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Bot, User, LogOut, TerminalSquare, Settings, Plus, MessageSquare, Trash2, X, Globe, Brain, Wifi, WifiOff, Eye, EyeOff, Zap, BookOpen, Key, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Bot, User, LogOut, TerminalSquare, Settings, Plus, MessageSquare, Trash2, X, Globe, Brain, Wifi, WifiOff, Eye, EyeOff, Zap, BookOpen, Key, ChevronDown, ChevronUp, Plug } from 'lucide-react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import '../index.css';
 import { sendMessage } from '../services/llm';
 import { addToRAG, queryRAG, getRAGStats, checkRAGHealth, webSearch } from '../services/rag';
+
+import { checkMcpStatus } from '../services/mcp';
+import CodeStudio from '../components/CodeStudio';
+
 
 const CODER_MODES = [
     { value: 'General',    label: 'General / No Filter', promptFile: null },
@@ -39,6 +43,7 @@ export default function Home() {
     const [generatingChats, setGeneratingChats] = useState({});
     const [searchingChats, setSearchingChats] = useState({});
     const [showSettings, setShowSettings] = useState(false);
+    const [showMcpSettings, setShowMcpSettings] = useState(false);
     const [domainInstruction, setDomainInstruction] = useState('');
     const abortControllers = useRef({});
 
@@ -52,6 +57,9 @@ export default function Home() {
     const [showWebData, setShowWebData] = useState(() => localStorage.getItem('bedrock_ui_show_webdata') === 'true');
     const [ragStats, setRagStats] = useState({ total: 0, domains: {} });
     const [ragOnline, setRagOnline] = useState(false);
+    const [pluginsEnabled, setPluginsEnabled] = useState(() => localStorage.getItem('bedrock_ui_plugins_enabled') === 'true');
+    const [studioOpen, setStudioOpen] = useState(false);
+    const [activeMcpServers, setActiveMcpServers] = useState([]);
     // Search Engine Options (fully UI-driven, no code changes needed)
     const [tavilyKey, setTavilyKey] = useState(() => localStorage.getItem('bedrock_ui_tavily_key') || '');
     const [tavilyEnabled, setTavilyEnabled] = useState(() => localStorage.getItem('bedrock_ui_tavily_enabled') === 'true');
@@ -71,12 +79,13 @@ export default function Home() {
     useEffect(() => { localStorage.setItem('bedrock_ui_websearch', webSearchEnabled); }, [webSearchEnabled]);
     useEffect(() => { localStorage.setItem('bedrock_ui_scrape_len', scrapeLength); }, [scrapeLength]);
     useEffect(() => { localStorage.setItem('bedrock_ui_show_webdata', showWebData); }, [showWebData]);
+    useEffect(() => { localStorage.setItem('bedrock_ui_plugins_enabled', pluginsEnabled); }, [pluginsEnabled]);
     useEffect(() => { localStorage.setItem('bedrock_ui_tavily_key', tavilyKey); }, [tavilyKey]);
     useEffect(() => { localStorage.setItem('bedrock_ui_tavily_enabled', tavilyEnabled); }, [tavilyEnabled]);
     useEffect(() => { localStorage.setItem('bedrock_ui_jina', jinaEnabled); }, [jinaEnabled]);
     useEffect(() => { scrollToBottom(); }, [chats, activeChatId, loading]);
 
-    // Poll RAG server health + stats every 10 seconds
+    // Poll RAG server health + stats + MCP status every 10 seconds
     useEffect(() => {
         const checkServer = async () => {
             const online = await checkRAGHealth();
@@ -85,6 +94,8 @@ export default function Home() {
                 const stats = await getRAGStats();
                 setRagStats(stats);
             }
+            const plugins = await checkMcpStatus();
+            setActiveMcpServers(plugins);
         };
         checkServer();
         const interval = setInterval(checkServer, 10000);
@@ -295,7 +306,8 @@ CRITICAL RULES:
                 (chunk) => {
                     accumulatedText += chunk;
                     updateActiveChatArgs([...uiPayloadMessages, { role: 'assistant', content: accumulatedText, agentName: currentAgent.name }], null, targetChatId);
-                }
+                },
+                pluginsEnabled
             );
 
             // Final safety update
@@ -367,6 +379,10 @@ CRITICAL RULES:
                 />
             )}
 
+            {showMcpSettings && (
+                <McpSettingsModal onClose={() => setShowMcpSettings(false)} />
+            )}
+
             {/* Sidebar */}
             <div className="glass-panel" style={{ width: '280px', display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--surface-border)', zIndex: 10 }}>
                 <div style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid var(--surface-border)' }}>
@@ -414,6 +430,9 @@ CRITICAL RULES:
                 <div style={{ padding: '20px', borderTop: '1px solid var(--surface-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <button onClick={() => setShowSettings(true)} className="btn btn-secondary w-full" style={{ justifyContent: 'flex-start', background: 'transparent', border: 'none' }}>
                         <Settings size={18} /> Manage Agents
+                    </button>
+                    <button onClick={() => setShowMcpSettings(true)} className="btn btn-secondary w-full" style={{ justifyContent: 'flex-start', background: 'transparent', border: 'none' }}>
+                        <Plug size={18} /> Manage Plugins (MCP)
                     </button>
                     <button
                         className="btn btn-secondary w-full"
@@ -478,6 +497,42 @@ CRITICAL RULES:
                         >
                             <Globe size={13} />
                             <span>Web {webSearchEnabled ? 'ON' : 'OFF'}</span>
+                        </button>
+
+                        {/* Plugins Toggle */}
+                        <button 
+                            className={`btn btn-icon ${pluginsEnabled ? 'btn-glow-yellow' : ''}`}
+                            onClick={() => setPluginsEnabled(!pluginsEnabled)}
+                            title={pluginsEnabled ? "Disable Plugins (Speed Mode)" : "Enable Plugins (Agentic Tools)"}
+                            style={{ 
+                                padding: '8px 12px', 
+                                borderRadius: 'var(--radius-md)',
+                                background: pluginsEnabled ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255,255,255,0.05)',
+                                border: `1px solid ${pluginsEnabled ? 'rgba(234, 179, 8, 0.4)' : 'transparent'}`,
+                                color: pluginsEnabled ? '#eab308' : 'var(--text-secondary)',
+                                fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                            }}
+                        >
+                            <Zap size={14} fill={pluginsEnabled ? "currentColor" : "none"} />
+                            {pluginsEnabled ? 'Plugins ON' : 'Plugins OFF'}
+                            {pluginsEnabled && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: activeMcpServers.length > 0 ? '#4ade80' : 'rgba(255,255,255,0.2)', boxShadow: activeMcpServers.length > 0 ? '0 0 8px #4ade80' : 'none' }} />}
+                        </button>
+
+                        <button 
+                            className={`btn btn-icon ${studioOpen ? 'btn-glow-purple' : ''}`}
+                            onClick={() => setStudioOpen(true)}
+                            title="Open Code Studio (Browser Repos)"
+                            style={{ 
+                                padding: '8px 12px', 
+                                borderRadius: 'var(--radius-md)',
+                                background: 'rgba(168, 85, 247, 0.1)',
+                                border: '1px solid rgba(168, 85, 247, 0.3)',
+                                color: '#a855f7',
+                                fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                            }}
+                        >
+                            <TerminalSquare size={14} />
+                            Studio Mode
                         </button>
 
                         {/* Web Search Controls — only visible when web search is ON */}
@@ -777,6 +832,8 @@ CRITICAL RULES:
                 </div>
             </div>
 
+            <CodeStudio isOpen={studioOpen} onClose={() => setStudioOpen(false)} />
+
             <style>{`
         .message-content pre {
           background: #1e1e24 !important;
@@ -959,3 +1016,99 @@ function AgentSettingsModal({ agents, setAgents, onClose, selectedAgentId, setSe
         </div>
     );
 }
+
+function McpSettingsModal({ onClose }) {
+    const defaultForm = { name: 'github', command: 'npx', args: '-y @modelcontextprotocol/server-github', gitToken: '', gitUser: '' };
+    const [form, setForm] = useState(() => {
+        const saved = localStorage.getItem('bedrock_ui_mcp_form');
+        return saved ? JSON.parse(saved) : defaultForm;
+    });
+    const [status, setStatus] = useState('');
+
+    const handleConnect = async () => {
+        if (!form.gitToken || !form.gitUser) return alert('Both GitHub Token and Username are required');
+        
+        setStatus('Connecting...');
+        localStorage.setItem('bedrock_ui_mcp_form', JSON.stringify(form));
+        
+        try {
+            const res = await fetch('http://localhost:3002/mcp/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: form.name,
+                    command: form.command,
+                    args: form.args.split(' '), 
+                    envVars: { 
+                        GITHUB_PERSONAL_ACCESS_TOKEN: form.gitToken.trim(),
+                        GITHUB_USERNAME: form.gitUser.trim() 
+                    }
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setStatus('✅ GitHub Connected! Verification successful.');
+                setTimeout(onClose, 2000);
+            } else {
+                setStatus(`❌ Error: ${data.error}`);
+            }
+        } catch (e) {
+            setStatus('❌ Network error: Is the MCP backend running on :3002?');
+        }
+    };
+
+    return (
+        <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+            zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+            <div className="glass-panel animate-fade-in" style={{
+                width: '600px', maxHeight: '80vh', overflowY: 'auto',
+                padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px'
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--surface-border)', paddingBottom: '16px' }}>
+                     <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}><Plug size={20} style={{ marginRight: '8px' }}/> Connect GitHub Plugin</h2>
+                     <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><X size={20} /></button>
+                </div>
+                
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
+                    Enable GitHub repository management, code search, and file creation directly in your chat.
+                </p>
+
+                <div className="input-group">
+                    <label className="input-label">GitHub Username</label>
+                    <input type="text" placeholder="e.g. mahe31337" className="input-field" value={form.gitUser} onChange={(e) => setForm({ ...form, gitUser: e.target.value })} />
+                </div>
+
+                <div className="input-group">
+                    <label className="input-label">GitHub Personal Access Token</label>
+                    <input type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxx" className="input-field" value={form.gitToken} onChange={(e) => setForm({ ...form, gitToken: e.target.value })} />
+                </div>
+                
+                <div style={{ padding: '12px', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    <p style={{ margin: '0 0 4px 0', color: 'var(--accent-primary)' }}><strong>🛡️ Verification Mode Active</strong></p>
+                    The backend will automatically verify this token against your account before displaying the 🟢 active status.
+                </div>
+
+                {status && (
+                    <div style={{ 
+                        padding: '10px 14px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: 500,
+                        background: status.includes('✅') ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                        color: status.includes('✅') ? '#4ade80' : 'var(--error)',
+                        border: `1px solid ${status.includes('✅') ? 'rgba(74, 222, 128, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                    }}>
+                        {status}
+                    </div>
+                )}
+                
+                <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+                     <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConnect} disabled={status === 'Connecting...'}>
+                         {status === 'Connecting...' ? 'Verifying & Connecting...' : 'Connect to GitHub'}
+                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
