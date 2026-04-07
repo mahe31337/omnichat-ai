@@ -40,6 +40,29 @@ OmniChat natively supports the standard **Model Context Protocol (MCP)**, allowi
 - **Live Tool Streaming:** Watch the literal raw JSON outputs from backend tools stream into the chat UI in real-time within collapsible `<details>` blocks.
 - **Safety Toggle:** Use the **Plugins ON/OFF** button in the header to easily detach all tools during casual chatting to prevent hallucination (especially useful for smaller local models).
 - **Supports OpenAI & Ollama:** Tool calling schemas are automatically translated for both massive cloud models (GPT-4o) and local models (Qwen2.5, Llama3). Note: for 20+ tools, local models require 8B+ parameters for reliable tool calling.
+- **Selective Toggling:** Dynamically enable/disable specific plugins (GitHub vs Prometheus) mid-conversation to focus the AI's context and prevent tool hallucinations.
+
+---
+
+### 💡 Sample Agentic Queries
+Once your MCP plugins are connected and enabled, try these powerful multi-system prompts:
+
+#### 📊 Observability (Prometheus & Grafana)
+*   **Node Health**: *"What is the current CPU usage of nodes in the 'production' namespace? Use the current Unix timestamp for the range."*
+*   **Pod Memory**: *"List the top 5 pods by memory usage in my cluster and suggest if any need higher limits."*
+*   **Alert Analysis**: *"Are there any firing alerts in Prometheus right now? Group them by severity."*
+*   **Dashboard Search**: *"Search for Grafana dashboards related to 'EKS' and tell me which one monitors networking."*
+*   **Data Sources**: *"List all configured data sources in Grafana and confirm if our Prometheus instance is connected."*
+
+#### 📂 Code & Repositories (GitHub)
+*   **Repo Overview**: *"List my most recent 5 repositories and their last 2 commits."*
+*   **Pull Request Audit**: *"Search for all open pull requests across my repos that mention 'security' or 'fix'."*
+*   **File Analysis**: *"Find the `Home.jsx` file in the 'omnichat-ai' repo and explain the plugin toggling logic."*
+*   **Release Tracking**: *"What was the most recent release tag for my 'terraform-modules' repository?"*
+
+#### 🔀 Multi-Plugin (The Power Move)
+*   **Incident Post-Mortem**: *"Check the last 3 commits in the 'api' repo on **GitHub**, then cross-reference with **Prometheus** to see if latency increased during those deployments."*
+*   **Dashboard Analysis**: *"Find the 'Cluster Overview' dashboard in **Grafana**, read its current state, and tell me if its metrics align with the raw **Prometheus** query for node pressure."*
 
 ---
 
