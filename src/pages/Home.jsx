@@ -7,7 +7,7 @@ import '../index.css';
 import { sendMessage } from '../services/llm';
 import { addToRAG, queryRAG, getRAGStats, checkRAGHealth, webSearch } from '../services/rag';
 
-import { checkMcpStatus } from '../services/mcp';
+import { checkMcpStatus, executeMcpTool } from '../services/mcp';
 import CodeStudio from '../components/CodeStudio';
 
 
@@ -57,7 +57,11 @@ export default function Home() {
     const [showWebData, setShowWebData] = useState(() => localStorage.getItem('bedrock_ui_show_webdata') === 'true');
     const [ragStats, setRagStats] = useState({ total: 0, domains: {} });
     const [ragOnline, setRagOnline] = useState(false);
-    const [pluginsEnabled, setPluginsEnabled] = useState(() => localStorage.getItem('bedrock_ui_plugins_enabled') === 'true');
+
+    const [enabledPluginIds, setEnabledPluginIds] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('bedrock_ui_enabled_plugin_ids') || '[]'); }
+        catch { return []; }
+    });
     const [studioOpen, setStudioOpen] = useState(false);
     const [activeMcpServers, setActiveMcpServers] = useState([]);
     // Search Engine Options (fully UI-driven, no code changes needed)
@@ -79,7 +83,7 @@ export default function Home() {
     useEffect(() => { localStorage.setItem('bedrock_ui_websearch', webSearchEnabled); }, [webSearchEnabled]);
     useEffect(() => { localStorage.setItem('bedrock_ui_scrape_len', scrapeLength); }, [scrapeLength]);
     useEffect(() => { localStorage.setItem('bedrock_ui_show_webdata', showWebData); }, [showWebData]);
-    useEffect(() => { localStorage.setItem('bedrock_ui_plugins_enabled', pluginsEnabled); }, [pluginsEnabled]);
+    useEffect(() => { localStorage.setItem('bedrock_ui_enabled_plugin_ids', JSON.stringify(enabledPluginIds)); }, [enabledPluginIds]);
     useEffect(() => { localStorage.setItem('bedrock_ui_tavily_key', tavilyKey); }, [tavilyKey]);
     useEffect(() => { localStorage.setItem('bedrock_ui_tavily_enabled', tavilyEnabled); }, [tavilyEnabled]);
     useEffect(() => { localStorage.setItem('bedrock_ui_jina', jinaEnabled); }, [jinaEnabled]);
@@ -307,7 +311,7 @@ CRITICAL RULES:
                     accumulatedText += chunk;
                     updateActiveChatArgs([...uiPayloadMessages, { role: 'assistant', content: accumulatedText, agentName: currentAgent.name }], null, targetChatId);
                 },
-                pluginsEnabled
+                enabledPluginIds
             );
 
             // Final safety update
@@ -380,7 +384,12 @@ CRITICAL RULES:
             )}
 
             {showMcpSettings && (
-                <McpSettingsModal onClose={() => setShowMcpSettings(false)} />
+                <McpSettingsModal 
+                    onClose={() => setShowMcpSettings(false)} 
+                    enabledPluginIds={enabledPluginIds}
+                    setEnabledPluginIds={setEnabledPluginIds}
+                    activeMcpServers={activeMcpServers}
+                />
             )}
 
             {/* Sidebar */}
@@ -499,23 +508,24 @@ CRITICAL RULES:
                             <span>Web {webSearchEnabled ? 'ON' : 'OFF'}</span>
                         </button>
 
-                        {/* Plugins Toggle */}
-                        <button 
-                            className={`btn btn-icon ${pluginsEnabled ? 'btn-glow-yellow' : ''}`}
-                            onClick={() => setPluginsEnabled(!pluginsEnabled)}
-                            title={pluginsEnabled ? "Disable Plugins (Speed Mode)" : "Enable Plugins (Agentic Tools)"}
-                            style={{ 
-                                padding: '8px 12px', 
-                                borderRadius: 'var(--radius-md)',
-                                background: pluginsEnabled ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255,255,255,0.05)',
-                                border: `1px solid ${pluginsEnabled ? 'rgba(234, 179, 8, 0.4)' : 'transparent'}`,
-                                color: pluginsEnabled ? '#eab308' : 'var(--text-secondary)',
-                                fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                        {/* Plugins Management Button */}
+                        <button
+                            className={`btn btn-icon ${enabledPluginIds.length > 0 ? 'btn-glow-yellow' : ''}`}
+                            onClick={() => setShowMcpSettings(true)}
+                            title="Manage Plugins"
+                            style={{
+                                height: '34px', padding: '0 14px', borderRadius: 'var(--radius-md)',
+                                fontSize: '0.78rem', fontWeight: 600, gap: '8px',
+                                background: enabledPluginIds.length > 0 ? 'rgba(234, 179, 8, 0.15)' : 'rgba(255,255,255,0.05)',
+                                border: `1px solid ${enabledPluginIds.length > 0 ? 'rgba(234, 179, 8, 0.4)' : 'transparent'}`,
+                                color: enabledPluginIds.length > 0 ? '#eab308' : 'var(--text-secondary)',
+                                transition: 'all 0.2s',
+                                backdropFilter: 'blur(10px)'
                             }}
                         >
-                            <Zap size={14} fill={pluginsEnabled ? "currentColor" : "none"} />
-                            {pluginsEnabled ? 'Plugins ON' : 'Plugins OFF'}
-                            {pluginsEnabled && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: activeMcpServers.length > 0 ? '#4ade80' : 'rgba(255,255,255,0.2)', boxShadow: activeMcpServers.length > 0 ? '0 0 8px #4ade80' : 'none' }} />}
+                            <Zap size={14} fill={enabledPluginIds.length > 0 ? "currentColor" : "none"} />
+                            {enabledPluginIds.length > 0 ? `${enabledPluginIds.length} Active` : 'Plugins'}
+                            {enabledPluginIds.length > 0 && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 8px #4ade80' }} />}
                         </button>
 
                         <button 
@@ -706,7 +716,7 @@ CRITICAL RULES:
                 </div>
 
                 {/* Chat Feed */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px 32px 32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {messages.length === 0 && (
                         <div style={{ margin: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'var(--text-tertiary)' }}>
                             <Bot size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
@@ -943,6 +953,7 @@ function AgentSettingsModal({ agents, setAgents, onClose, selectedAgentId, setSe
                             <label className="input-label">Provider</label>
                             <select className="input-field" value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })}>
                                 <option value="openai">OpenAI</option>
+                                <option value="groq">Groq (Ultra-Fast)</option>
                                 <option value="ollama">Ollama (Local)</option>
                                 <option value="gemini">Google Gemini</option>
                                 <option value="bedrock">AWS Bedrock (Standard)</option>
@@ -962,10 +973,10 @@ function AgentSettingsModal({ agents, setAgents, onClose, selectedAgentId, setSe
                             </div>
                         )}
 
-                        {(form.provider === 'openai' || form.provider === 'gemini') && (
+                        {(form.provider === 'openai' || form.provider === 'gemini' || form.provider === 'groq') && (
                             <div className="input-group">
                                 <label className="input-label">API Key</label>
-                                <input type="password" placeholder="sk-..." className="input-field" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
+                                <input type="password" placeholder={form.provider === 'groq' ? "gsk_..." : "sk-..."} className="input-field" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} />
                             </div>
                         )}
 
@@ -1017,98 +1028,377 @@ function AgentSettingsModal({ agents, setAgents, onClose, selectedAgentId, setSe
     );
 }
 
-function McpSettingsModal({ onClose }) {
-    const defaultForm = { name: 'github', command: 'npx', args: '-y @modelcontextprotocol/server-github', gitToken: '', gitUser: '' };
-    const [form, setForm] = useState(() => {
-        const saved = localStorage.getItem('bedrock_ui_mcp_form');
-        return saved ? JSON.parse(saved) : defaultForm;
+// Registry of all supported MCP integrations — add new apps here
+const MCP_APPS = [
+    {
+        id: 'github',
+        name: 'GitHub',
+        description: 'Manage repos, issues, PRs, and files via natural language.',
+        icon: '🐙',
+        color: '#6e40c9',
+        gradient: 'linear-gradient(135deg, #24292e, #6e40c9)',
+        badge: 'Popular',
+        badgeColor: '#a78bfa',
+        command: 'npx',
+        args: '-y @modelcontextprotocol/server-github',
+        fields: [
+            { key: 'gitUser', label: 'GitHub Username', placeholder: 'e.g. mahesh31337', type: 'text' },
+            { key: 'gitToken', label: 'Personal Access Token', placeholder: 'ghp_xxxxxxxxxxxx', type: 'password', hint: 'Needs repo, read:org scopes' },
+        ],
+        buildEnvVars: (f) => ({ GITHUB_PERSONAL_ACCESS_TOKEN: f.gitToken?.trim(), GITHUB_USERNAME: f.gitUser?.trim() }),
+        validate: (f) => f.gitToken && f.gitUser,
+        storageKey: 'bedrock_ui_mcp_form',
+    },
+    {
+        id: 'prometheus',
+        name: 'Prometheus',
+        description: 'Query metrics and analyze time-series data using PromQL.',
+        icon: '🔥',
+        color: '#e6522c',
+        gradient: 'linear-gradient(135deg, #1d1d1d, #e6522c)',
+        badge: 'Recommended',
+        badgeColor: '#fb7185',
+        command: 'npx',
+        args: '-y prometheus-mcp stdio',
+        fields: [
+            { key: 'prometheusUrl', label: 'Prometheus Server URL', placeholder: 'http://localhost:9090', type: 'text', hint: 'The base URL (e.g. http://10.180...)' },
+        ],
+        buildEnvVars: (f) => ({ PROMETHEUS_URL: f.prometheusUrl?.trim() }),
+        validate: (f) => f.prometheusUrl,
+        storageKey: 'bedrock_ui_mcp_prometheus_form',
+    },
+    {
+        id: 'grafana',
+        name: 'Grafana',
+        description: 'Explore dashboards, browse alerts, and manage Grafana resources.',
+        icon: '📊',
+        color: '#f47a20',
+        gradient: 'linear-gradient(135deg, #1f1f1f, #f47a20)',
+        badge: 'New',
+        badgeColor: '#f59e0b',
+        command: 'npx',
+        args: '-y @leval/mcp-grafana',
+        fields: [
+            { key: 'grafanaUrl', label: 'Grafana Instance URL', placeholder: 'http://localhost:3000', type: 'text' },
+            { key: 'grafanaToken', label: 'Service Account Token / API Key', placeholder: 'glsa_xxxxxxxxxxxx', type: 'password', hint: 'Generate at Administration -> Service Accounts.' },
+        ],
+        buildEnvVars: (f) => ({ GRAFANA_URL: f.grafanaUrl?.trim(), GRAFANA_SERVICE_ACCOUNT_TOKEN: f.grafanaToken?.trim() }),
+        validate: (f) => f.grafanaUrl && f.grafanaToken,
+        storageKey: 'bedrock_ui_mcp_grafana_form',
+    },
+    {
+        id: 'gitlab',
+        name: 'GitLab',
+        description: 'Manage GitLab projects, merge requests, and pipelines.',
+        icon: '🦊',
+        color: '#fc6d26',
+        gradient: 'linear-gradient(135deg, #292961, #fc6d26)',
+        badge: null,
+        command: 'npx',
+        args: '-y @modelcontextprotocol/server-gitlab',
+        fields: [
+            { key: 'gitlabToken', label: 'GitLab Personal Access Token', placeholder: 'glpat-xxxxxxxxxxxx', type: 'password', hint: 'Needs api scope. Create at Settings → Access Tokens.' },
+            { key: 'gitlabUrl', label: 'GitLab URL (optional)', placeholder: 'https://gitlab.com', type: 'text', hint: 'Leave blank for gitlab.com. For self-hosted, enter your instance URL.' },
+        ],
+        buildEnvVars: (f) => ({ GITLAB_PERSONAL_ACCESS_TOKEN: f.gitlabToken?.trim(), ...(f.gitlabUrl?.trim() ? { GITLAB_URL: f.gitlabUrl.trim() } : {}) }),
+        validate: (f) => f.gitlabToken,
+        storageKey: 'bedrock_ui_mcp_gitlab_form',
+    },
+    {
+        id: 'notion',
+        name: 'Notion',
+        description: 'Read and write Notion pages and databases.',
+        icon: '📝',
+        color: '#ffffff',
+        gradient: 'linear-gradient(135deg, #2d2d2d, #555)',
+        badge: 'Coming Soon',
+        badgeColor: '#6b7280',
+        comingSoon: true,
+    },
+    {
+        id: 'slack',
+        name: 'Slack',
+        description: 'Send messages and read channels in your workspace.',
+        icon: '💬',
+        color: '#4a154b',
+        gradient: 'linear-gradient(135deg, #4a154b, #611f69)',
+        badge: 'Coming Soon',
+        badgeColor: '#6b7280',
+        comingSoon: true,
+    },
+    {
+        id: 'jira',
+        name: 'Jira',
+        description: 'Create and manage Jira issues and projects.',
+        icon: '📋',
+        color: '#0052cc',
+        gradient: 'linear-gradient(135deg, #0747a6, #0052cc)',
+        badge: 'Coming Soon',
+        badgeColor: '#6b7280',
+        comingSoon: true,
+    },
+    {
+        id: 'postgres',
+        name: 'PostgreSQL',
+        description: 'Query your Postgres database in plain English.',
+        icon: '🐘',
+        color: '#336791',
+        gradient: 'linear-gradient(135deg, #1a3a52, #336791)',
+        badge: 'Coming Soon',
+        badgeColor: '#6b7280',
+        comingSoon: true,
+    },
+];
+
+function McpSettingsModal({ onClose, enabledPluginIds, setEnabledPluginIds, activeMcpServers }) {
+    const [selectedApp, setSelectedApp] = useState(null);
+    const [forms, setForms] = useState(() => {
+        const result = {};
+        MCP_APPS.forEach(app => {
+            if (app.storageKey) {
+                try { result[app.id] = JSON.parse(localStorage.getItem(app.storageKey) || '{}'); }
+                catch { result[app.id] = {}; }
+            }
+        });
+        return result;
     });
     const [status, setStatus] = useState('');
+    const [connecting, setConnecting] = useState(false);
+
+    const currentForm = selectedApp ? (forms[selectedApp.id] || {}) : {};
+    const setCurrentForm = (vals) => setForms(prev => ({ ...prev, [selectedApp.id]: { ...prev[selectedApp.id], ...vals } }));
+
+    // An app is "connected" if its validate function passes on the stored form
+    const isConnected = (app) => !app.comingSoon && app.validate && app.validate(forms[app.id] || {});
 
     const handleConnect = async () => {
-        if (!form.gitToken || !form.gitUser) return alert('Both GitHub Token and Username are required');
-        
+        if (!selectedApp || selectedApp.comingSoon) return;
+        if (!selectedApp.validate(currentForm)) {
+            setStatus('❌ Please fill in all required fields.');
+            return;
+        }
+        setConnecting(true);
         setStatus('Connecting...');
-        localStorage.setItem('bedrock_ui_mcp_form', JSON.stringify(form));
-        
+        if (selectedApp.storageKey) localStorage.setItem(selectedApp.storageKey, JSON.stringify(currentForm));
         try {
             const res = await fetch('http://localhost:3002/mcp/connect', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    name: form.name,
-                    command: form.command,
-                    args: form.args.split(' '), 
-                    envVars: { 
-                        GITHUB_PERSONAL_ACCESS_TOKEN: form.gitToken.trim(),
-                        GITHUB_USERNAME: form.gitUser.trim() 
-                    }
+                    name: selectedApp.id,
+                    command: selectedApp.command,
+                    args: selectedApp.args.split(' '),
+                    envVars: selectedApp.buildEnvVars(currentForm),
                 })
             });
             const data = await res.json();
             if (data.success) {
-                setStatus('✅ GitHub Connected! Verification successful.');
-                setTimeout(onClose, 2000);
+                setStatus(`✅ ${selectedApp.name} connected successfully!`);
+                if (!enabledPluginIds.includes(selectedApp.id)) {
+                    setEnabledPluginIds(prev => [...prev, selectedApp.id]);
+                }
+                setTimeout(() => { setSelectedApp(null); setStatus(''); }, 1800);
             } else {
-                setStatus(`❌ Error: ${data.error}`);
+                setStatus(`❌ ${data.error}`);
             }
-        } catch (e) {
-            setStatus('❌ Network error: Is the MCP backend running on :3002?');
+        } catch {
+            setStatus('❌ Network error: Is the MCP backend running on :3002? Check if VPN is restricting port 3002.');
+        } finally {
+            setConnecting(false);
         }
+    };
+
+    const handleDisconnect = async (appId) => {
+        try {
+            const res = await fetch('http://localhost:3002/mcp/disconnect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: appId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setEnabledPluginIds(prev => prev.filter(id => id !== appId));
+                return true;
+            }
+        } catch (err) {
+            console.error('[MCP] Disconnect error:', err);
+        }
+        return false;
     };
 
     return (
         <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-            zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center'
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)',
+            zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
             <div className="glass-panel animate-fade-in" style={{
-                width: '600px', maxHeight: '80vh', overflowY: 'auto',
-                padding: '32px', display: 'flex', flexDirection: 'column', gap: '20px'
+                width: '520px', maxHeight: '85vh', overflowY: 'auto',
+                padding: '0', display: 'flex', flexDirection: 'column',
+                borderRadius: '14px', border: '1px solid var(--surface-border)',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.55)'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--surface-border)', paddingBottom: '16px' }}>
-                     <h2 style={{ margin: 0, display: 'flex', alignItems: 'center' }}><Plug size={20} style={{ marginRight: '8px' }}/> Connect GitHub Plugin</h2>
-                     <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><X size={20} /></button>
-                </div>
-                
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
-                    Enable GitHub repository management, code search, and file creation directly in your chat.
-                </p>
-
-                <div className="input-group">
-                    <label className="input-label">GitHub Username</label>
-                    <input type="text" placeholder="e.g. mahe31337" className="input-field" value={form.gitUser} onChange={(e) => setForm({ ...form, gitUser: e.target.value })} />
-                </div>
-
-                <div className="input-group">
-                    <label className="input-label">GitHub Personal Access Token</label>
-                    <input type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxxx" className="input-field" value={form.gitToken} onChange={(e) => setForm({ ...form, gitToken: e.target.value })} />
-                </div>
-                
-                <div style={{ padding: '12px', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '8px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    <p style={{ margin: '0 0 4px 0', color: 'var(--accent-primary)' }}><strong>🛡️ Verification Mode Active</strong></p>
-                    The backend will automatically verify this token against your account before displaying the 🟢 active status.
-                </div>
-
-                {status && (
-                    <div style={{ 
-                        padding: '10px 14px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: 500,
-                        background: status.includes('✅') ? 'rgba(74, 222, 128, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                        color: status.includes('✅') ? '#4ade80' : 'var(--error)',
-                        border: `1px solid ${status.includes('✅') ? 'rgba(74, 222, 128, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
-                    }}>
-                        {status}
+                {/* Header */}
+                <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--surface-border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {selectedApp && (
+                            <button
+                                onClick={() => { setSelectedApp(null); setStatus(''); }}
+                                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--surface-border)', borderRadius: '6px', color: 'var(--text-secondary)', cursor: 'pointer', padding: '5px 9px', fontSize: '0.78rem' }}
+                            >← Back</button>
+                        )}
+                        <div>
+                            <h2 style={{ margin: 0, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '7px' }}>
+                                <Plug size={16} /> {selectedApp ? `Connect ${selectedApp.name}` : 'Manage Plugins'}
+                            </h2>
+                            {!selectedApp && <p style={{ margin: '2px 0 0 0', fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>Connect AI tools and services</p>}
+                        </div>
                     </div>
-                )}
-                
-                <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
-                     <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConnect} disabled={status === 'Connecting...'}>
-                         {status === 'Connecting...' ? 'Verifying & Connecting...' : 'Connect to GitHub'}
-                     </button>
+                    <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}><X size={18} /></button>
+                </div>
+
+                <div style={{ padding: '16px 20px', flex: 1 }}>
+                    {!selectedApp ? (
+                        /* Simple list */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {MCP_APPS.map(app => {
+                                const connected = activeMcpServers.includes(app.id);
+                                const enabled = enabledPluginIds.includes(app.id);
+                                return (
+                                    <div
+                                        key={app.id}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: '14px',
+                                            padding: '12px 14px', borderRadius: '10px',
+                                            cursor: app.comingSoon ? 'default' : 'pointer',
+                                            opacity: app.comingSoon ? 0.45 : 1,
+                                            transition: 'all 0.15s',
+                                            background: 'rgba(255,255,255,0.02)',
+                                            border: '1px solid var(--surface-border)',
+                                            marginBottom: '8px'
+                                        }}
+                                        onClick={() => !app.comingSoon && setSelectedApp(app)}
+                                    >
+                                        {/* Icon */}
+                                        <div style={{
+                                            width: '38px', height: '38px', borderRadius: '9px', flexShrink: 0,
+                                            background: app.gradient, display: 'flex', alignItems: 'center',
+                                            justifyContent: 'center', fontSize: '1.15rem',
+                                        }}>
+                                            {app.icon}
+                                        </div>
+
+                                        {/* Text */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 600, fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                {app.name}
+                                                {app.badge && <span style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: app.badgeColor, color: 'white' }}>{app.badge}</span>}
+                                            </div>
+                                            <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '1px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {connected ? '✅ Active & Connected' : app.description}
+                                            </div>
+                                        </div>
+
+                                        {/* Controls */}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={e => e.stopPropagation()}>
+                                            {connected ? (
+                                                <>
+                                                    {/* Toggle */}
+                                                    <div 
+                                                        onClick={() => setEnabledPluginIds(prev => enabled ? prev.filter(id => id !== app.id) : [...prev, app.id])}
+                                                        style={{
+                                                            width: '36px', height: '20px', borderRadius: '20px',
+                                                            background: enabled ? '#eab308' : 'rgba(255,255,255,0.1)',
+                                                            position: 'relative', cursor: 'pointer', transition: 'all 0.2s',
+                                                            border: '1px solid rgba(255,255,255,0.1)'
+                                                        }}
+                                                    >
+                                                        <div style={{
+                                                            width: '14px', height: '14px', borderRadius: '50%', background: 'white',
+                                                            position: 'absolute', top: '2px', left: enabled ? '19px' : '3px',
+                                                            transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                        }} />
+                                                    </div>
+                                                    
+                                                    {/* Disconnect */}
+                                                    <button 
+                                                        onClick={() => handleDisconnect(app.id)}
+                                                        className="btn-icon"
+                                                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', width: '28px', height: '28px', border: '1px solid rgba(239,68,68,0.2)' }}
+                                                        title="Disconnect Plugin"
+                                                    >
+                                                        <LogOut size={12} />
+                                                    </button>
+                                                </>
+                                            ) : app.comingSoon ? (
+                                                <span style={{ fontSize: '0.62rem', fontWeight: 600, padding: '3px 8px', borderRadius: '99px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-tertiary)', border: '1px solid var(--surface-border)' }}>
+                                                    Soon
+                                                </span>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setSelectedApp(app)}
+                                                    className="btn"
+                                                    style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: '6px' }}
+                                                >
+                                                    Connect
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        /* Credential form */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {selectedApp.fields.map(field => (
+                                <div key={field.key} className="input-group">
+                                    <label className="input-label">{field.label}</label>
+                                    <input
+                                        type={field.type}
+                                        placeholder={field.placeholder}
+                                        className="input-field"
+                                        value={currentForm[field.key] || ''}
+                                        onChange={e => setCurrentForm({ [field.key]: e.target.value })}
+                                    />
+                                    {field.hint && (
+                                        <span style={{ fontSize: '0.71rem', color: 'var(--text-tertiary)', marginTop: '4px', display: 'block' }}>
+                                            💡 {field.hint}
+                                        </span>
+                                    )}
+                                </div>
+                            ))}
+
+                            <div style={{ padding: '10px 12px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: '8px', fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                                🛡️ Credentials are stored <strong>locally</strong> and only sent to your local MCP server at <code>localhost:3002</code>.
+                            </div>
+
+                            {status && (
+                                <div style={{
+                                    padding: '9px 13px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 500,
+                                    background: status.includes('✅') ? 'rgba(74,222,128,0.1)' : status === 'Connecting...' ? 'rgba(99,102,241,0.1)' : 'rgba(239,68,68,0.1)',
+                                    color: status.includes('✅') ? '#4ade80' : status === 'Connecting...' ? '#818cf8' : 'var(--error)',
+                                    border: `1px solid ${status.includes('✅') ? 'rgba(74,222,128,0.3)' : status === 'Connecting...' ? 'rgba(99,102,241,0.3)' : 'rgba(239,68,68,0.3)'}`
+                                }}>
+                                    {status}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                                <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleConnect} disabled={connecting}>
+                                    {connecting ? `Connecting...` : isConnected(selectedApp) ? `Reconnect ${selectedApp.name}` : `Connect ${selectedApp.name}`}
+                                </button>
+                                <button className="btn btn-secondary" style={{ background: 'transparent', border: '1px solid var(--surface-border)' }} onClick={() => { setSelectedApp(null); setStatus(''); }}>
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     );
 }
+
+
 

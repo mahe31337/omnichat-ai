@@ -1,0 +1,47 @@
+.
+├── eslint.config.js
+├── index.html
+├── leval-mcp-grafana-1.0.3.tgz
+├── mcp-server
+│   ├── mcp-manager.js
+│   ├── package.json
+│   ├── server.js
+│   └── test.js
+├── package
+│   ├── package.json
+│   └── README.md
+├── package.json
+├── project_structure.txt
+├── public
+│   ├── prompts
+│   │   ├── ansible.md
+│   │   ├── docker.md
+│   │   ├── kubernetes.md
+│   │   └── terraform.md
+│   └── vite.svg
+├── rag-server
+│   ├── package.json
+│   ├── rag-store
+│   │   └── store.json
+│   └── server.js
+├── README.md
+├── src
+│   ├── App.css
+│   ├── App.jsx
+│   ├── assets
+│   │   └── react.svg
+│   ├── components
+│   │   └── CodeStudio.jsx
+│   ├── index.css
+│   ├── main.jsx
+│   ├── pages
+│   │   ├── Home.jsx
+│   │   └── Login.jsx
+│   └── services
+│       ├── llm.js
+│       ├── mcp.js
+│       └── rag.js
+├── test-invoke.mjs
+└── vite.config.js
+
+12 directories, 33 files
